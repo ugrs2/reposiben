@@ -38,6 +38,8 @@ const page = await browser.newPage({ viewport: { width, height }, deviceScaleFac
 page.on('pageerror', e => console.error('Sayfa hatası:', e.message));
 await page.goto(pathToFileURL(resolve(root, 'index.html')).href + '?capture', { waitUntil: 'networkidle' });
 await page.waitForFunction(() => window.__demo);
+// Tüm yazı tipi dosyalarını baştan yükle; yoksa ilk kez kullanılan kalın/ince kesim bir iki kare geç gelir.
+await page.evaluate(() => Promise.all([...document.fonts].map(f => f.load().catch(() => null))));
 await page.evaluate(() => document.fonts.ready);
 
 const total = await page.evaluate(() => window.__demo.total);

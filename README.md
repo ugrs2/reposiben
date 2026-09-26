@@ -24,9 +24,9 @@ rakam ile görüntü her karede birebir örtüşür.
 
 ## Çalıştırma
 
-`index.html` dosyasını tarayıcıda açmanız yeterli. three.js `vendor/` klasöründe
-olduğu için sunum internetsiz de çalışır. Yalnızca Google Fonts yazı tipleri için
-bağlantı gerekir; bağlantı yoksa sistem yazı tipleri kullanılır.
+`index.html` dosyasını tarayıcıda açmanız yeterli. three.js (`vendor/`) ve yazı
+tipleri (`fonts/`, SIL Open Font License) repoda olduğu için sunum internetsiz de
+çalışır.
 
 Yerel sunucu isterseniz:
 
