@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sıfır Tıklama</title>
+<meta name="description" content="Yapay zekâ çağında haber sitelerinin trafik kaybını anlatan three.js tabanlı sinematik sunum.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ink: #070B16;
+    --paper: #F4EFE3;
+    --paper-dim: rgba(244, 239, 227, .74);
+    --amber: #FFB23F;
+    --red: #FF2B3A;
+    --ice: #7CE3FF;
+    --steel: #8391AB;
+    --rule: rgba(244, 239, 227, .16);
+    --display: "Big Shoulders Display", "Oswald", "Arial Narrow", Impact, sans-serif;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --gx: clamp(16px, 6vw, 96px);
+    --bar-h: 64px;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; background: var(--ink); color: var(--paper); overflow: hidden; }
+  body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(120% 95% at 62% 42%, transparent 52%, rgba(3, 5, 10, .78) 100%),
+      linear-gradient(90deg, rgba(7, 11, 22, .82) 0%, rgba(7, 11, 22, .4) 30%, transparent 52%);
+  }
+
+  /* HUD */
+  .hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 3;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    padding: calc(env(safe-area-inset-top, 0px) + 20px) var(--gx) 0;
+    font: 500 12px/1 var(--mono); letter-spacing: .18em; color: var(--paper-dim);
+    pointer-events: none;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 12px var(--red); animation: rec 1.6s steps(2, jump-none) infinite; }
+  @keyframes rec { 50% { opacity: .25; } }
+  .chapter b { color: var(--paper); font-weight: 500; }
+
+  /* Sahneler */
+  .stage { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .scene { position: absolute; inset: 0; }
+  .scene:not(.on) * { pointer-events: none !important; }
+  .block { position: absolute; left: var(--gx); max-width: min(42vw, 600px); display: flex; flex-direction: column; gap: 18px; }
+  .block.mid { top: 50%; transform: translateY(-50%); }
+  .block.low { bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bar-h) + 40px); max-width: min(62vw, 920px); }
+  .block.low .headline { font-size: clamp(44px, 5.2vw, 88px); }
+  .headline.sm { font-size: clamp(40px, 4.6vw, 78px); }
+  .block.final { bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bar-h) + 40px); max-width: min(88vw, 1400px); }
+  .cue { opacity: 0; visibility: hidden; will-change: opacity, transform, filter; }
+
+  .kicker { display: flex; align-items: center; gap: 12px; margin: 0; font: 500 13px/1.2 var(--mono); letter-spacing: .2em; color: var(--amber); }
+  .kicker::before { content: ""; width: 28px; height: 1px; background: currentColor; flex: none; }
+  .kicker.red { color: var(--red); }
+  .kicker.ice { color: var(--ice); }
+  .headline { margin: 0; font-family: var(--display); font-weight: 800; font-size: clamp(46px, 6.6vw, 112px); line-height: .92; letter-spacing: .004em; text-wrap: balance; text-shadow: 0 2px 30px rgba(7, 11, 22, .6); }
+  .headline em { font-style: normal; color: var(--amber); }
+  .headline em.ice { color: var(--ice); }
+  .lede { margin: 0; max-width: 36ch; font-size: clamp(17px, 1.42vw, 22px); line-height: 1.5; color: var(--paper-dim); text-wrap: pretty; }
+  .lede b { color: var(--paper); font-weight: 600; }
+  .mega { margin: 0; white-space: nowrap; font-family: var(--display); font-weight: 900; font-size: clamp(110px, 14.5vw, 250px); line-height: .8; letter-spacing: -.01em; color: var(--amber); font-variant-numeric: tabular-nums; text-shadow: 0 0 60px rgba(255, 178, 63, .25); }
+  .mega.red { color: var(--red); text-shadow: 0 0 70px rgba(255, 43, 58, .35); }
+  .mega.paper { color: var(--paper); text-shadow: 0 0 60px rgba(244, 239, 227, .2); }
+  .big-line { margin: 0; font-family: var(--display); font-weight: 800; font-size: clamp(30px, 3.4vw, 54px); line-height: 1; }
+  .big-line em { font-style: normal; color: var(--amber); }
+  .tagline { margin: 0; font: 400 12.5px/1.5 var(--mono); letter-spacing: .08em; color: var(--steel); }
+  .note { margin: 0; max-width: 60ch; font: 400 12px/1.6 var(--mono); color: var(--steel); }
+  .note b { color: var(--paper-dim); font-weight: 500; }
+  .swap { display: grid; }
+  .swap > * { grid-area: 1 / 1; }
+
+  .items { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+  .items li { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .items .tag { font: 500 11.5px/1 var(--mono); letter-spacing: .16em; color: var(--amber); }
+  .items strong { font-family: var(--display); font-weight: 800; font-size: clamp(24px, 2.1vw, 34px); line-height: 1; }
+  .items span { max-width: 48ch; font-size: 15.5px; line-height: 1.45; color: var(--paper-dim); }
+
+  .final-lines { display: flex; flex-direction: column; gap: 4px; }
+  .final-lines .headline { font-size: clamp(44px, 6.2vw, 118px); }
+  .final-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px 40px; }
+
+  /* Projeksiyon etiketleri */
+  #labels { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+  .lbl { position: absolute; left: 0; top: 0; opacity: 0; white-space: nowrap; font: 500 11.5px/1 var(--mono); letter-spacing: .16em; color: var(--paper-dim); text-shadow: 0 1px 8px var(--ink); }
+  .lbl.strong { color: var(--paper); font-size: 12.5px; }
+  .lbl.ice { color: var(--ice); }
+  .lbl.red { color: var(--red); }
+  .lbl.amber { color: var(--amber); }
+  .lbl.big { font-family: var(--display); font-weight: 800; font-size: clamp(22px, 2.2vw, 34px); letter-spacing: .01em; }
+
+  /* Düğmeler */
+  .btn {
+    pointer-events: auto; display: inline-flex; align-items: center; gap: 12px; align-self: flex-start;
+    padding: 14px 22px 14px 18px; border: 1px solid rgba(255, 178, 63, .55); border-radius: 999px;
+    background: rgba(255, 178, 63, .1); color: var(--paper); cursor: pointer;
+    font: 600 15px/1 var(--sans); letter-spacing: .02em;
+    transition: background .2s, border-color .2s, transform .2s;
+  }
+  .btn:hover { background: rgba(255, 178, 63, .2); border-color: var(--amber); transform: translateY(-1px); }
+  .btn:focus-visible, .ctl:focus-visible, .bar:focus-visible { outline: 2px solid var(--ice); outline-offset: 3px; }
+  .btn svg { width: 18px; height: 18px; fill: var(--amber); }
+  .start-wrap { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+  .start-wrap[hidden] { display: none !important; }
+  .keys { margin: 0; font: 400 11.5px/1.5 var(--mono); letter-spacing: .06em; color: var(--steel); }
+
+  /* Kontroller */
+  .controls {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px var(--gx) calc(env(safe-area-inset-bottom, 0px) + 18px);
+    background: linear-gradient(0deg, rgba(7, 11, 22, .92), rgba(7, 11, 22, 0));
+    transition: opacity .4s;
+  }
+  body.idle .controls { opacity: 0; }
+  body.idle, body.idle #gl { cursor: none; }
+  .ctl { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--rule); border-radius: 50%; background: rgba(244, 239, 227, .04); color: var(--paper); cursor: pointer; padding: 0; }
+  .ctl:hover { border-color: var(--paper-dim); }
+  .ctl svg { width: 16px; height: 16px; fill: currentColor; }
+  .bar { flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; gap: 3px; cursor: pointer; }
+  .seg { position: relative; height: 3px; background: rgba(244, 239, 227, .16); border-radius: 2px; overflow: hidden; }
+  .seg i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--amber); }
+  .bar:hover .seg { height: 5px; }
+  .time { flex: none; font: 400 12px/1 var(--mono); color: var(--paper-dim); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+
+  .fallback { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font: 400 15px/1.6 var(--sans); color: var(--paper-dim); z-index: 10; background: var(--ink); }
+
+  body.capture .controls, body.capture .start-wrap { display: none !important; }
+
+  /* Dikey ekran: metin alta, sahne üste */
+  @media (max-aspect-ratio: 19/20) {
+    .vignette { background:
+      radial-gradient(120% 80% at 50% 30%, transparent 50%, rgba(3, 5, 10, .7) 100%),
+      linear-gradient(0deg, rgba(7, 11, 22, .92) 0%, rgba(7, 11, 22, .6) 38%, transparent 60%); }
+    .block, .block.mid, .block.low, .block.final { top: auto; transform: none; left: 16px; right: 16px; max-width: none; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bar-h) + 22px); gap: 12px; }
+    .headline { font-size: clamp(38px, 11vw, 64px); }
+    .mega { font-size: clamp(96px, 32vw, 180px); }
+    .lede { font-size: 16px; }
+    .items { gap: 8px; }
+    .items li { padding-top: 8px; gap: 3px; }
+    .items strong { font-size: 20px; }
+    .items span { font-size: 13px; }
+    .items li > span:last-child { display: none; }
+    .lbl.big { font-size: 16px; }
+    .hud .chapter span { display: none; }
+    .lbl.hide-narrow { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .brand i { animation: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl" aria-label="Sunum animasyonu"></canvas>
+<div class="vignette"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<header class="hud">
+  <div class="brand"><i></i>SIFIR TIKLAMA</div>
+  <div class="chapter"><b id="chNum">01</b> / 09 <span>· <span id="chName">Giriş</span></span></div>
+</header>
+
+<main class="stage" id="stage">
+  <!-- 0 · Giriş -->
+  <section class="scene" data-scene="0">
+    <div class="block mid">
+      <p class="kicker cue" data-in="0.3">HABER YAYINCILIĞI · 2026</p>
+      <h1 class="headline cue" data-in="0.7">Trafik<br>nereye <em>gitti?</em></h1>
+      <p class="lede cue" data-in="1.8">Yapay zekâ soruları kendisi cevaplıyor. Okur haberi okuyor ama haber sitesine gelmiyor.</p>
+      <div class="start-wrap" id="start">
+        <button class="btn" id="btnStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>Sunumu başlat</button>
+        <p class="keys">Boşluk: oynat/duraklat · ← →: sahne · F: tam ekran · M: ses</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 · Eskiden -->
+  <section class="scene" data-scene="1">
+    <div class="block low">
+      <p class="kicker cue" data-in="0.6">ESKİDEN</p>
+      <h2 class="headline cue" data-in="1.0">Ara. Tıkla. <em>Oku.</em></h2>
+      <p class="lede cue" data-in="2.2">Arama motoru bir yönlendiriciydi. Her sorgu, okuru bir haber sitesine taşırdı.</p>
+    </div>
+  </section>
+
+  <!-- 2 · Yapay zekâ -->
+  <section class="scene" data-scene="2">
+    <div class="block low">
+      <p class="kicker ice cue" data-in="0.4">SONRA</p>
+      <h2 class="headline cue" data-in="0.9">Yapay zekâ <em class="ice">yolu kesti.</em></h2>
+      <p class="lede cue" data-in="2.4">Soru soruluyor, cevap aynı ekranda veriliyor. Haber okunuyor ama <b>haber sitesi ziyaret edilmiyor.</b></p>
+      <p class="tagline cue" data-in="4.2">AI OVERVIEWS · AI MODE · CHATGPT · GEMINI · PERPLEXITY</p>
+    </div>
+  </section>
+
+  <!-- 3 · 1.000 kişi -->
+  <section class="scene" data-scene="3">
+    <div class="block mid">
+      <p class="kicker cue" data-in="0.5">YAPAY ZEKÂ DESTEKLİ ARAMADA</p>
+      <p class="mega cue" data-in="0.9" id="cntBin">1.000</p>
+      <div class="swap">
+        <p class="big-line cue" data-in="1.5" data-out="7.6">kişi bir soru soruyor.</p>
+        <p class="big-line cue" data-in="8.4">kişi kaynağa <em>tıklıyor.</em></p>
+      </div>
+      <div class="swap">
+        <p class="lede cue" data-in="4.0" data-out="7.6">Cevabı yapay zekâdan alıyor. Kaynağa gitmeye gerek kalmıyor.</p>
+        <p class="lede cue" data-in="9.4"><b>Yüzde 1.</b> Geriye kalan 990 okur, haberi hiç açmadan ayrılıyor.</p>
+      </div>
+      <p class="note cue" data-in="10.4">Pew Research Center, Temmuz 2025: AI özeti gösterilen Google aramalarında, özetin içindeki kaynağa tıklama ziyaretlerin %1’inde gerçekleşti.</p>
+    </div>
+  </section>
+
+  <!-- 4 · Dünya -->
+  <section class="scene" data-scene="4">
+    <div class="block mid">
+      <p class="kicker cue" data-in="0.5">DÜNYA GENELİ</p>
+      <p class="mega paper cue" data-in="1.0" id="cntGlobal">%0</p>
+      <p class="big-line cue" data-in="2.0">haber sitesi trafiği</p>
+      <p class="lede cue" data-in="5.2">Arama kaynaklı ziyaretler <b>yarıya indi.</b> Yapay zekâ yanıtları yayıldıkça kayıp büyüyor.</p>
+    </div>
+  </section>
+
+  <!-- 5 · Türkiye -->
+  <section class="scene" data-scene="5">
+    <div class="block mid">
+      <p class="kicker red cue" data-in="0.5">TÜRKİYE</p>
+      <p class="mega red cue" data-in="1.0" id="cntTR">%0</p>
+      <p class="big-line cue" data-in="2.0">trafik kaybı</p>
+      <p class="lede cue" data-in="6.0">Türkiye gibi pazarlarda düşüş <b>%80’e varıyor.</b> Her beş okurdan dördü artık siteye gelmiyor.</p>
+    </div>
+  </section>
+
+  <!-- 6 · Eğilim -->
+  <section class="scene" data-scene="6">
+    <div class="block mid">
+      <p class="kicker cue" data-in="0.4">VE DÜŞÜŞ SÜRÜYOR</p>
+      <h2 class="headline cue" data-in="0.8">Dip henüz <em>görünmüyor.</em></h2>
+      <p class="lede cue" data-in="2.2">Yapay zekâ yanıtları yaygınlaştıkça tıklamasız aramalar artıyor. Bugünkü eğilim düşüşün süreceğini gösteriyor.</p>
+      <p class="note cue" data-in="5.0">Temsili eğilim · arama kaynaklı trafik endeksi (yapay zekâ öncesi = 100)</p>
+    </div>
+  </section>
+
+  <!-- 7 · Çıkış yolu -->
+  <section class="scene" data-scene="7">
+    <div class="block mid">
+      <p class="kicker cue" data-in="0.4">NE YAPMALI?</p>
+      <h2 class="headline sm cue" data-in="0.8">Tıklamayı değil, <em>okuru</em> kazanmak.</h2>
+      <ul class="items">
+        <li class="cue" data-in="2.4"><span class="tag">BÜLTEN · UYGULAMA · BİLDİRİM</span><strong>Doğrudan bağ</strong><span>Aracısız okur ilişkisi. Algoritmaya değil, okura yatırım.</span></li>
+        <li class="cue" data-in="4.7"><span class="tag">SAHA · ÖZEL HABER · YEREL</span><strong>Kopyalanamaz içerik</strong><span>Yapay zekânın özetleyemediği şey: ilk elden bilgi ve uzman yorumu.</span></li>
+        <li class="cue" data-in="7.0"><span class="tag">ABONELİK · ÜYELİK · ETKİNLİK</span><strong>Sadakate dayalı gelir</strong><span>Sayfa görüntülemesine değil, ilişkiye bağlı gelir modeli.</span></li>
+        <li class="cue" data-in="9.3"><span class="tag">LİSANS · ERİŞİM · ATIF</span><strong>İçerik hakkı</strong><span>Yapay zekâ şirketleriyle lisans anlaşması, tarayıcı erişim kontrolü, görünür kaynak gösterimi.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 8 · Son -->
+  <section class="scene" data-scene="8">
+    <div class="block final">
+      <div class="final-lines">
+        <h2 class="headline cue" data-in="0.6">Tıklama ekonomisi bitiyor.</h2>
+        <h2 class="headline cue" data-in="1.8"><em>Okur ekonomisi</em> başlıyor.</h2>
+      </div>
+      <div class="final-row">
+        <p class="note cue" data-in="3.4"><b>Kaynaklar ve notlar.</b> %1 tıklama oranı: Pew Research Center, “Google users are less likely to click on links when an AI summary appears in the results”, Temmuz 2025. Türkiye (%80’e varan) ve dünya geneli (%50) düşüş oranları: sunum brifindeki yayıncı verileri. Eğilim grafiği temsilidir.</p>
+        <button class="btn cue" data-in="3.8" id="btnReplay" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>Baştan izle</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="controls" id="controls">
+  <button class="ctl" id="btnPlay" type="button" aria-label="Oynat">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path id="icoPlay" d="M7 4.5v15l13-7.5z"/></svg>
+  </button>
+  <div class="bar" id="bar" role="slider" tabindex="0" aria-label="Sunum zaman çizelgesi" aria-valuemin="0" aria-valuemax="98" aria-valuenow="0"></div>
+  <span class="time" id="time">00:00 / 00:00</span>
+  <button class="ctl" id="btnSnd" type="button" aria-label="Sesi kapat">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path id="icoSnd" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+  </button>
+  <button class="ctl" id="btnFs" type="button" aria-label="Tam ekran">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3H4zm10-5h6v5h-2V6h-4V4zM4 15h2v3h3v2H4v-5zm14 3v-3h2v5h-6v-2h4z"/></svg>
+  </button>
+</div>
+
+<script src="vendor/three/three.min.js"></script>
+<script src="vendor/three/CopyShader.js"></script>
+<script src="vendor/three/LuminosityHighPassShader.js"></script>
+<script src="vendor/three/EffectComposer.js"></script>
+<script src="vendor/three/RenderPass.js"></script>
+<script src="vendor/three/ShaderPass.js"></script>
+<script src="vendor/three/UnrealBloomPass.js"></script>
+<script>
+(() => {
+'use strict';
+document.documentElement.lang = 'tr';
+
+if (!window.THREE) {
+  const f = document.createElement('div');
+  f.className = 'fallback';
+  f.textContent = 'Sunum için three.js yüklenemedi. İnternet bağlantınızı kontrol edip sayfayı yenileyin.';
+  document.body.appendChild(f);
+  return;
+}
+
+/* ───────── Yardımcılar ───────── */
+const TAU = Math.PI * 2;
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+const easeOut = x => { x = clamp01(x); return 1 - Math.pow(1 - x, 3); };
+const easeInOut = x => { x = clamp01(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const mix = (a, b, t) => a + (b - a) * t;
+const fract = x => x - Math.floor(x);
+const fmt = n => n.toLocaleString('tr-TR');
+
+const COL = {
+  amber: [1.0, 0.698, 0.247],
+  paper: [0.957, 0.937, 0.89],
+  red:   [1.0, 0.169, 0.227],
+  ice:   [0.486, 0.89, 1.0],
+  steel: [0.36, 0.42, 0.53],
+};
+const hex = c => new THREE.Color(c[0], c[1], c[2]);
+
+const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const CAPTURE = /[?&]capture\b/.test(location.search);
+if (CAPTURE) document.body.classList.add('capture');
+
+/* ───────── Zaman çizelgesi ───────── */
+const SCENES = [
+  { id: 'giris',      name: 'Giriş',      dur: 7 },
+  { id: 'eskiden',    name: 'Eskiden',    dur: 10 },
+  { id: 'yapay-zeka', name: 'Yapay zekâ', dur: 10, noBlend: true },
+  { id: 'bin-kisi',   name: '1.000 kişi', dur: 14 },
+  { id: 'dunya',      name: 'Dünya',      dur: 10 },
+  { id: 'turkiye',    name: 'Türkiye',    dur: 12 },
+  { id: 'egilim',     name: 'Eğilim',     dur: 11 },
+  { id: 'cikis',      name: 'Çıkış yolu', dur: 14 },
+  { id: 'son',        name: 'Son',        dur: 10 },
+];
+let acc = 0;
+SCENES.forEach(s => { s.start = acc; acc += s.dur; });
+const TOTAL = acc;
+const TR_TIME = 2.2; // sahne geçişi (morph) süresi
+const sceneAt = t => { for (let k = SCENES.length - 1; k > 0; k--) if (t >= SCENES[k].start) return k; return 0; };
+
+/* ───────── Deterministik rastgelelik ───────── */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(20260925);
+const N = 1000; // her parçacık bir okur
+const R = new Float32Array(N * 6);
+for (let i = 0; i < R.length; i++) R[i] = rnd();
+const RANK = new Int16Array(N);
+{
+  const order = Array.from({ length: N }, (_, i) => i);
+  for (let i = N - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  order.forEach((p, r) => { RANK[p] = r; });
+}
+// Yörünge düzlemleri
+const OU = new Float32Array(N * 3), OV = new Float32Array(N * 3);
+{
+  const n = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < N; i++) {
+    n.set(rnd() - .5, rnd() * .9 + .35, rnd() - .5).normalize();
+    u.crossVectors(n, up); if (u.lengthSq() < 1e-4) u.set(1, 0, 0); u.normalize();
+    v.crossVectors(n, u).normalize();
+    OU.set([u.x, u.y, u.z], i * 3); OV.set([v.x, v.y, v.z], i * 3);
+  }
+}
+
+/* ───────── Türkiye silüeti (boylam, enlem) ───────── */
+const TURKEY = [
+  [26.04,40.74],[26.33,41.25],[26.62,41.36],[26.32,41.72],[26.60,41.95],[27.30,42.08],[28.00,41.98],
+  [28.60,41.55],[29.05,41.25],[29.90,41.15],[30.70,41.10],[31.40,41.30],[32.30,41.72],[33.30,42.00],
+  [34.40,41.97],[35.10,42.08],[35.50,41.65],[36.20,41.72],[36.35,41.28],[37.10,41.15],[37.90,41.00],
+  [38.80,40.95],[39.70,41.00],[40.50,41.03],[41.30,41.40],[41.55,41.52],[42.50,41.45],[42.85,41.55],
+  [43.45,41.10],[43.65,40.55],[43.65,40.10],[44.30,40.00],[44.78,39.72],[44.80,39.40],[44.35,39.40],
+  [44.10,39.00],[44.30,38.40],[44.20,37.95],[44.60,37.75],[44.80,37.20],[44.20,37.25],[43.50,37.25],
+  [42.80,37.35],[42.35,37.10],[41.20,37.07],[40.20,36.85],[39.20,36.66],[38.20,36.90],[37.00,36.65],
+  [36.70,36.83],[36.65,36.25],[36.40,35.95],[36.15,35.82],[35.90,35.93],[35.97,36.30],[36.20,36.60],
+  [35.80,36.80],[35.35,36.58],[34.60,36.78],[34.00,36.30],[33.30,36.13],[32.80,36.02],[32.00,36.50],
+  [31.30,36.80],[30.70,36.88],[30.50,36.40],[30.40,36.20],[29.60,36.18],[29.10,36.60],[28.30,36.72],
+  [27.60,36.70],[27.40,37.00],[27.25,37.60],[27.20,37.95],[26.35,38.30],[26.80,38.55],[26.75,38.95],
+  [26.65,39.30],[26.10,39.45],[26.15,39.95],[26.40,40.15],[26.18,40.05],[26.50,40.35],[26.83,40.62],
+];
+const MARMARA = [[26.70,40.40],[27.50,40.97],[28.20,41.07],[28.98,41.00],[29.90,40.73],[29.10,40.38],[28.00,40.38],[27.30,40.38]];
+const VAN = [[42.30,38.55],[42.90,38.95],[43.60,38.60],[43.20,38.35],[42.60,38.30]];
+const geo = ([lon, lat]) => [(lon - 35.42) * 0.777 * 0.74, (lat - 38.96) * 0.74];
+const TK = TURKEY.map(geo), MM = MARMARA.map(geo), VN = VAN.map(geo);
+function inPoly(x, y, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) c = !c;
+  }
+  return c;
+}
+const TP = new Float32Array(N * 2);
+{
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  TK.forEach(([x, y]) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); });
+  let n = 0;
+  while (n < N) {
+    const x = mix(minX, maxX, rnd()), y = mix(minY, maxY, rnd());
+    if (inPoly(x, y, TK) && !inPoly(x, y, MM) && !inPoly(x, y, VN)) { TP[n * 2] = x; TP[n * 2 + 1] = y; n++; }
+  }
+}
+
+/* ───────── Akış sahnesi geometrisi ───────── */
+const SRC = [-8.6, 0, 0];
+const SITE_NAMES = ['Gündem', 'Ekonomi', 'Spor', 'Dünya', 'Teknoloji', 'Yerel', 'Sağlık', 'Kültür-Sanat'];
+const SITES = SITE_NAMES.map((_, k) => { const y = 3.3 - k * 6.6 / 7; return [8.2 - Math.abs(y) * 0.3, y, 0]; });
+
+/* ───────── Eğilim grafiği ───────── */
+const TODAY_U = 0.72;
+function chartV(g, u) {
+  const target = g ? 20 : 50, proj = g ? 9 : 37;
+  if (u < 0.22) return 100;
+  if (u < TODAY_U) return 100 - (100 - target) * easeInOut((u - 0.22) / (TODAY_U - 0.22));
+  return target - (target - proj) * Math.pow((u - TODAY_U) / (1 - TODAY_U), 0.9);
+}
+const chartY = v => v / 100 * 4 - 2;
+const chartX = u => -5.5 + u * 11;
+
+/* ───────── Renderer ───────── */
+const canvas = document.getElementById('gl');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+} catch (e) {
+  const f = document.createElement('div');
+  f.className = 'fallback';
+  f.textContent = 'Bu tarayıcı WebGL desteklemiyor. Sunumu izlemek için güncel bir Chrome, Edge, Firefox veya Safari kullanın.';
+  document.body.appendChild(f);
+  return;
+}
+renderer.setClearColor(0x070B16, 1);
+const scene = new THREE.Scene();
+const FOV = 45;
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 200);
+camera.position.set(0, 0, 16);
+
+let composer = null, bloom = null;
+// Işıma (bloom) isteğe bağlı: eklentiler yüklenemezse sahne düz render edilir.
+if (THREE.EffectComposer && THREE.RenderPass && THREE.ShaderPass && THREE.UnrealBloomPass && THREE.CopyShader && THREE.LuminosityHighPassShader) {
+  try {
+    composer = new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    bloom = new THREE.UnrealBloomPass(new THREE.Vector2(512, 512), 1.25, 0.6, 0.05);
+    composer.addPass(bloom);
+  } catch (e) { composer = null; bloom = null; }
+}
+
+/* Parçacık malzemesi */
+const uScale = { value: 1 };
+function pointMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uScale, uMul: { value: 1 } },
+    vertexShader: `
+      attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+      uniform float uScale;
+      varying vec3 vC; varying float vA;
+      void main(){
+        vC = aColor; vA = aAlpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = max(aSize * uScale / max(-mv.z, 0.1), 1.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform float uMul;
+      varying vec3 vC; varying float vA;
+      void main(){
+        vec2 p = gl_PointCoord - 0.5;
+        float d = length(p) * 2.0;
+        if (d > 1.0) discard;
+        float a = (exp(-d * d * 5.5) + smoothstep(1.0, 0.0, d) * 0.18) * vA * uMul;
+        gl_FragColor = vec4(vC * a, a);
+      }`,
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+  });
+}
+function makePoints(n) {
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), size = new Float32Array(n), alpha = new Float32Array(n);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  g.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1));
+  const m = new THREE.Points(g, pointMaterial());
+  m.frustumCulled = false;
+  return { mesh: m, pos, col, size, alpha, geo: g };
+}
+
+/* Toz / arka plan */
+const dust = makePoints(1800);
+for (let i = 0; i < 1800; i++) {
+  dust.pos.set([(rnd() - .5) * 90, (rnd() - .5) * 55, -8 - rnd() * 45], i * 3);
+  const c = rnd() < .8 ? COL.steel : COL.ice;
+  dust.col.set(c, i * 3);
+  dust.size[i] = 0.06 + rnd() * 0.14;
+  dust.alpha[i] = 0.18 + rnd() * 0.4;
+}
+const dustGroup = new THREE.Group();
+dustGroup.add(dust.mesh);
+scene.add(dustGroup);
+
+/* Okurlar */
+const P = makePoints(N);
+scene.add(P.mesh);
+
+/* 1.000 kişilik hayalet ızgara */
+const ghost = makePoints(N);
+for (let i = 0; i < N; i++) {
+  const col = i % 40, row = (i / 40) | 0;
+  ghost.pos.set([(col - 19.5) * 0.27, (12 - row) * 0.27, 0], i * 3);
+  ghost.col.set(COL.steel, i * 3);
+  ghost.size[i] = 0.07;
+  ghost.alpha[i] = 0.55;
+}
+const ghostGroup = new THREE.Group();
+ghostGroup.add(ghost.mesh);
+scene.add(ghostGroup);
+
+/* Yapay zekâ çekirdeği */
+const coreGroup = new THREE.Group();
+const coreMat = new THREE.ShaderMaterial({
+  uniforms: { uI: { value: 1 }, uT: { value: 0 } },
+  vertexShader: `
+    varying vec3 vN; varying vec3 vV; varying vec3 vP;
+    void main(){
+      vN = normalize(normalMatrix * normal);
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vV = normalize(-mv.xyz); vP = position;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform float uI; uniform float uT;
+    varying vec3 vN; varying vec3 vV; varying vec3 vP;
+    void main(){
+      float f = pow(1.0 - max(dot(vN, vV), 0.0), 2.2);
+      float bands = 0.5 + 0.5 * sin(vP.y * 14.0 + uT * 2.2 + sin(vP.x * 6.0 + uT) * 1.5);
+      vec3 deep = vec3(0.02, 0.09, 0.16);
+      vec3 ice = vec3(0.49, 0.89, 1.0);
+      vec3 c = deep + ice * (f * 1.6 + bands * 0.12);
+      gl_FragColor = vec4(c * uI, 1.0);
+    }`,
+});
+const coreSphere = new THREE.Mesh(new THREE.SphereGeometry(0.9, 48, 32), coreMat);
+const coreWireMat = new THREE.LineBasicMaterial({ color: hex(COL.ice), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+const coreWire = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.25, 1)), coreWireMat);
+const haloTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(124,227,255,0.55)'); gr.addColorStop(0.35, 'rgba(124,227,255,0.16)'); gr.addColorStop(1, 'rgba(124,227,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const haloMat = new THREE.SpriteMaterial({ map: haloTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+const halo = new THREE.Sprite(haloMat); halo.scale.set(6, 6, 1);
+coreGroup.add(halo, coreSphere, coreWire);
+scene.add(coreGroup);
+
+/* Arama düğümü ve siteler */
+const flowGroup = new THREE.Group();
+const lineMat = (c, o) => new THREE.LineBasicMaterial({ color: hex(c), transparent: true, opacity: o, depthWrite: false });
+const srcMat = new THREE.MeshBasicMaterial({ color: hex(COL.paper), transparent: true, depthWrite: false });
+const srcRing = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.035, 8, 64), srcMat);
+const srcDot = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 12), srcMat);
+srcRing.position.set(...SRC); srcDot.position.set(...SRC);
+flowGroup.add(srcRing, srcDot);
+const siteMats = [], siteEdgeMats = [], siteMeshes = [];
+SITES.forEach(p => {
+  const m = new THREE.MeshBasicMaterial({ color: hex(COL.amber), transparent: true, opacity: .8, depthWrite: false });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), m);
+  const em = lineMat(COL.paper, .8);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.62, 0.62, 0.62)), em);
+  box.position.set(...p); edges.position.set(...p);
+  flowGroup.add(box, edges);
+  siteMats.push(m); siteEdgeMats.push(em); siteMeshes.push(box, edges);
+});
+scene.add(flowGroup);
+
+/* Küre çizgileri */
+const globeGroup = new THREE.Group();
+const globeMat = lineMat(COL.steel, .3);
+{
+  const pts = [];
+  const rr = 3.97;
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const y = Math.sin(lat * Math.PI / 180) * rr, r = Math.cos(lat * Math.PI / 180) * rr;
+    for (let a = 0; a < 72; a++) {
+      const a0 = a / 72 * TAU, a1 = (a + 1) / 72 * TAU;
+      pts.push(Math.cos(a0) * r, y, Math.sin(a0) * r, Math.cos(a1) * r, y, Math.sin(a1) * r);
+    }
+  }
+  for (let lo = 0; lo < 180; lo += 30) {
+    const L = lo * Math.PI / 180;
+    for (let a = 0; a < 72; a++) {
+      const a0 = a / 72 * TAU, a1 = (a + 1) / 72 * TAU;
+      pts.push(Math.cos(a0) * Math.cos(L) * rr, Math.sin(a0) * rr, Math.cos(a0) * Math.sin(L) * rr,
+               Math.cos(a1) * Math.cos(L) * rr, Math.sin(a1) * rr, Math.cos(a1) * Math.sin(L) * rr);
+    }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  globeGroup.add(new THREE.LineSegments(g, globeMat));
+}
+scene.add(globeGroup);
+
+/* Türkiye çizgisi */
+const turkeyGroup = new THREE.Group();
+const turkeyMat = lineMat(COL.steel, .5);
+[TK, MM, VN].forEach(poly => {
+  const g = new THREE.BufferGeometry().setFromPoints(poly.map(([x, y]) => new THREE.Vector3(x, y, 0)));
+  turkeyGroup.add(new THREE.LineLoop(g, turkeyMat));
+});
+scene.add(turkeyGroup);
+
+/* Grafik eksenleri */
+const chartGroup = new THREE.Group();
+const chartBaseMat = lineMat(COL.steel, .45);
+const chartDashMat = new THREE.LineDashedMaterial({ color: hex(COL.paper), dashSize: 0.14, gapSize: 0.12, transparent: true, opacity: .35, depthWrite: false });
+{
+  const base = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-5.7, -2.05, 0), new THREE.Vector3(5.9, -2.05, 0)]), chartBaseMat);
+  const ref = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-5.7, 2, 0), new THREE.Vector3(5.9, 2, 0)]), chartDashMat);
+  const tx = chartX(TODAY_U);
+  const today = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(tx, -2.3, 0), new THREE.Vector3(tx, 2.55, 0)]), chartDashMat);
+  ref.computeLineDistances(); today.computeLineDistances();
+  chartGroup.add(base, ref, today);
+}
+scene.add(chartGroup);
+
+/* Yayıncı düğümü */
+const pubGroup = new THREE.Group();
+const pubMat = lineMat(COL.paper, .9);
+const pubSolidMat = new THREE.MeshBasicMaterial({ color: hex(COL.amber), transparent: true, depthWrite: false });
+const pubWire = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.75, 0)), pubMat);
+const pubSolid = new THREE.Mesh(new THREE.OctahedronGeometry(0.4, 0), pubSolidMat);
+pubGroup.add(pubWire, pubSolid);
+scene.add(pubGroup);
+
+/* ───────── Yerleşim (ekran oranına göre) ───────── */
+// [x, y, z, sahnenin yarı genişliği]
+const DESK = [
+  [3.4, 0.7, -2, 8.5],
+  [0, 1.7, 0, 9.4],
+  [0, 1.7, 0, 9.4],
+  [4.4, 0.3, 0, 5.6],
+  [4.6, 0.1, 0, 4.4],
+  [4.4, 0.5, 0, 5.8],
+  [4.3, 0.2, 0, 6.0],
+  [5.0, 0.1, 0, 4.6],
+  [0, 1.9, -3, 8.5],
+];
+const CAM = [[0, 0.4, 17], [0, 0.3, 16], [0, 0.2, 15.2], [-0.4, 0.4, 15.6], [0, 0.8, 16], [0, 2.4, 15.4], [0, 0.2, 16], [0.4, 0.6, 15.6], [0, 0.2, 17.5]];
+let W = 1, H = 1, PORTRAIT = false;
+let anchors = [];
+function computeAnchors() {
+  const aspect = W / H;
+  const hh = 16 * Math.tan(FOV / 2 * Math.PI / 180);
+  const hw = hh * aspect;
+  PORTRAIT = aspect < 0.95;
+  anchors = DESK.map(([x, y, z, half], k) => {
+    if (!PORTRAIT) { const ks = Math.min(1, hw / 11.8); return { x: x * ks, y, z, s: ks }; }
+    const s = Math.min(1, (hw * 0.94) / half);
+    return { x: 0, y: hh * (k === 7 ? 0.5 : 0.3) + (z < 0 ? 0.6 : 0), z, s: k === 7 ? s * 0.8 : s };
+  });
+}
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  const dpr = CAPTURE ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(W, H, false);
+  if (composer) { composer.setPixelRatio && composer.setPixelRatio(dpr); composer.setSize(W, H); }
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+  uScale.value = (H * dpr) / (2 * Math.tan(FOV / 2 * Math.PI / 180));
+  computeAnchors();
+}
+
+/* ───────── Parçacık yerleşimleri ───────── */
+const A = { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0, a: 0 };
+const B = { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0, a: 0 };
+const Q = { x: 0, y: 0, z: 0 };
+const setC = (o, c, k = 1) => { o.r = c[0] * k; o.g = c[1] * k; o.b = c[2] * k; };
+const mixC = (o, c1, c2, t) => { o.r = mix(c1[0], c2[0], t); o.g = mix(c1[1], c2[1], t); o.b = mix(c1[2], c2[2], t); };
+const STAT = { remaining: 1000, dimmed: 0, lost: 0 };
+
+function galaxy(i, T, o, dim) {
+  const b = i * 6, r1 = R[b], r2 = R[b + 1], r3 = R[b + 2], r4 = R[b + 3], r5 = R[b + 4], r6 = R[b + 5];
+  const rr = 0.5 + 7.2 * Math.pow(r1, 0.85);
+  const arm = Math.floor(r3 * 3);
+  const a = r2 * 0.9 + arm * TAU / 3 + rr * 0.42 + T * 0.05 * (4 / (rr + 1.5)) + (r4 - .5) * 0.6;
+  const x = Math.cos(a) * rr, z = Math.sin(a) * rr, y = (r5 - .5) * 0.7 * Math.exp(-rr * 0.25);
+  const tx = -1.05, ca = Math.cos(tx), sa = Math.sin(tx);
+  const y2 = y * ca - z * sa, z2 = y * sa + z * ca;
+  const tz = 0.32, cz = Math.cos(tz), sz = Math.sin(tz);
+  o.x = x * cz - y2 * sz; o.y = x * sz + y2 * cz; o.z = z2;
+  const core = Math.exp(-rr * 0.35);
+  mixC(o, COL.amber, COL.paper, clamp01(r6 * 0.55 + core * 0.8));
+  o.s = 0.07 + r4 * 0.07 + core * 0.06;
+  o.a = (0.45 + 0.55 * r5) * dim;
+}
+
+function flow(i, T, o) {
+  const b = i * 6, r1 = R[b], r2 = R[b + 1], r3 = R[b + 2], r4 = R[b + 3], r5 = R[b + 4], r6 = R[b + 5];
+  const st = SITES[i & 7];
+  const s = fract(r1 + T * (0.09 + r2 * 0.06)), u = 1 - s;
+  const p1x = SRC[0] + 5.2, p1y = st[1] * 0.12 + (r3 - .5) * 1.4, p1z = (r4 - .5) * 2.6;
+  const p2x = st[0] - 5.0, p2y = st[1] + (r5 - .5) * 0.4, p2z = (r6 - .5) * 1.6;
+  const b0 = u * u * u, b1 = 3 * u * u * s, b2 = 3 * u * s * s, b3 = s * s * s;
+  o.x = b0 * SRC[0] + b1 * p1x + b2 * p2x + b3 * st[0];
+  o.y = b0 * SRC[1] + b1 * p1y + b2 * p2y + b3 * st[1];
+  o.z = b1 * p1z + b2 * p2z;
+  o.a = smooth(s / 0.05) * smooth((1 - s) / 0.06) * (0.6 + 0.4 * r5);
+  mixC(o, COL.amber, COL.paper, r6 * 0.45);
+  o.s = 0.075 + r2 * 0.05;
+}
+
+function orbit(i, T, o) {
+  const b = i * 6, r1 = R[b], r3 = R[b + 2];
+  const ro = 0.95 + Math.pow(r3, 1.5) * 1.9;
+  const a = r1 * TAU + T * (1.1 / ro + 0.2);
+  const c = Math.cos(a) * ro, s = Math.sin(a) * ro, j = i * 3;
+  o.x = OU[j] * c + OV[j] * s; o.y = OU[j + 1] * c + OV[j + 1] * s; o.z = OU[j + 2] * c + OV[j + 2] * s;
+}
+
+const captureF = lt => 1.16 * smooth((lt - 1.0) / 7);
+
+function layout(k, i, lt, T, o) {
+  const b = i * 6, r1 = R[b], r2 = R[b + 1], r3 = R[b + 2], r4 = R[b + 3], r5 = R[b + 4], r6 = R[b + 5];
+  const rk = RANK[i];
+  switch (k) {
+    case 0: galaxy(i, T, o, 1); break;
+
+    case 1: flow(i, T, o); break;
+
+    case 2: {
+      flow(i, T, o);
+      const key = rk < 10 ? 2 : (999 - rk) / 990;
+      const c = smooth((captureF(lt) - key) / 0.15);
+      if (c > 0) {
+        orbit(i, T, Q);
+        o.x = mix(o.x, Q.x, c); o.y = mix(o.y, Q.y, c); o.z = mix(o.z, Q.z, c);
+        o.r = mix(o.r, COL.ice[0], c); o.g = mix(o.g, COL.ice[1], c); o.b = mix(o.b, COL.ice[2], c);
+        o.s = mix(o.s, 0.055 + r3 * 0.04, c);
+        o.a = mix(o.a, 0.7, c);
+      }
+      if (rk < 10) o.s *= 1 + 0.9 * smooth((lt - 6.5) / 1.5);
+      break;
+    }
+
+    case 3: {
+      const col = i % 40, row = (i / 40) | 0;
+      const gx = (col - 19.5) * 0.27, gy = (12 - row) * 0.27;
+      const gz = Math.sin(col * 0.35 + row * 0.2 + T * 1.4) * 0.06;
+      o.x = gx; o.y = gy; o.z = gz;
+      mixC(o, COL.paper, COL.amber, 0.35 + 0.4 * r6);
+      o.s = 0.085; o.a = 0.95;
+      if (rk < 10) {
+        const g = smooth((lt - 8.2) / 1.2);
+        o.s = 0.085 + g * 0.17 + g * 0.025 * Math.sin(T * 5 + r1 * 6);
+        mixC(o, COL.amber, COL.paper, 0.2);
+        o.a = 1;
+      } else {
+        const td = 4.0 + ((rk - 10) / 990) * 4.0 + (r2 - .5) * 0.25;
+        const p = clamp01((lt - td) / 1.4);
+        if (p > 0) {
+          const e = p * p;
+          o.x = mix(gx, 0, e); o.y = mix(gy, 0, e) + Math.sin(p * Math.PI) * 0.8; o.z = mix(gz, -7, e);
+          const base = [o.r, o.g, o.b];
+          mixC(o, base, COL.ice, smooth(p * 2));
+          o.a = 0.95 * (1 - smooth((p - 0.72) / 0.28));
+          o.s = 0.085 * (1 - 0.4 * p);
+        }
+        if (p > 0.5) STAT.remaining--;
+      }
+      break;
+    }
+
+    case 4: {
+      const yy = 1 - 2 * (i + 0.5) / N, rr = Math.sqrt(1 - yy * yy), ph = i * 2.399963;
+      let x = Math.cos(ph) * rr * 4, y = yy * 4, z = Math.sin(ph) * rr * 4;
+      let p = 0;
+      if (rk < 500) {
+        const td = 2.8 + (rk / 500) * 4.0;
+        p = smooth((lt - td) / 0.9);
+        if (lt - td > 0.45) STAT.dimmed++;
+      }
+      const sc = 1 - 0.14 * p; x *= sc; y *= sc; z *= sc;
+      const ay = T * 0.12, cy = Math.cos(ay), sy = Math.sin(ay);
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      const ax = 0.35, cx = Math.cos(ax), sx = Math.sin(ax);
+      o.x = x1; o.y = y * cx - z1 * sx; o.z = y * sx + z1 * cx;
+      mixC(o, COL.amber, COL.steel, p);
+      o.s = mix(0.1, 0.06, p);
+      o.a = mix(0.95, 0.14, p) * (0.45 + 0.55 * smooth((o.z / 4 + 1) / 2));
+      break;
+    }
+
+    case 5: {
+      let x = TP[i * 2], y = TP[i * 2 + 1], z = (r3 - .5) * 0.1;
+      let p1 = 0, p2 = 0;
+      if (rk < 800) {
+        const td = 2.8 + (rk / 800) * 5.2;
+        p1 = smooth((lt - td) / 0.45);
+        p2 = clamp01((lt - td - 0.45) / 1.7);
+        if (p2 > 0.3) STAT.lost++;
+      }
+      y -= 3.2 * p2 * p2; z += 1.4 * p2; x += (r4 - .5) * 0.6 * p2;
+      const ax = -0.5, cx = Math.cos(ax), sx = Math.sin(ax);
+      o.x = x; o.y = y * cx - z * sx; o.z = y * sx + z * cx;
+      mixC(o, COL.amber, COL.paper, r6 * 0.3);
+      if (p1 > 0) { const base = [o.r, o.g, o.b]; mixC(o, base, COL.red, p1); }
+      o.s = 0.1 + p1 * 0.025 * (1 - p2);
+      o.a = 0.95 * (1 - smooth(p2 * 1.1));
+      if (rk >= 800) { const g = smooth((lt - 8.6) / 1.0); o.s += 0.05 * g; }
+      break;
+    }
+
+    case 6: {
+      const g = rk < 500 ? 0 : 1, j = g ? rk - 500 : rk, u = (j + 0.5) / 500;
+      o.x = chartX(u); o.y = chartY(chartV(g, u)) + (r4 - .5) * 0.07; o.z = (r3 - .5) * 0.15;
+      const rv = clamp01((lt - 0.8) / 4.6) * 1.02;
+      let a = clamp01((rv - u) * 60);
+      if (u > TODAY_U) a *= fract(u * 22 - T * 0.6) < 0.5 ? 0.75 : 0.06;
+      mixC(o, COL.amber, g ? COL.red : COL.paper, smooth((u - 0.2) / 0.12));
+      const head = Math.exp(-Math.pow((rv - u) * 40, 2));
+      o.s = 0.08 + head * 0.12; o.a = a;
+      break;
+    }
+
+    case 7: {
+      const kr = rk & 3, rad = 1.45 + kr * 0.92 + (r2 - .5) * 0.22, dir = (kr & 1) ? -1 : 1;
+      const a = r1 * TAU + dir * T * (0.32 - kr * 0.045);
+      const x = Math.cos(a) * rad, y = (r3 - .5) * 0.12, z = Math.sin(a) * rad;
+      const ax = 0.45 + kr * 0.18, cx = Math.cos(ax), sx = Math.sin(ax);
+      const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
+      const az = -0.5 + kr * 0.42, cz = Math.cos(az), sz = Math.sin(az);
+      o.x = x * cz - y1 * sz; o.y = x * sz + y1 * cz; o.z = z1;
+      const act = smooth((lt - (2.4 + kr * 2.3)) / 0.9);
+      mixC(o, COL.steel, COL.amber, act);
+      o.s = 0.06 + 0.045 * act; o.a = 0.35 + 0.6 * act;
+      break;
+    }
+
+    case 8: galaxy(i, T, o, 0.75); break;
+  }
+}
+function toWorld(o, k) {
+  const an = anchors[k];
+  o.x = an.x + o.x * an.s; o.y = an.y + o.y * an.s; o.z = an.z + o.z * an.s; o.s *= an.s;
+}
+
+/* Sahne nesnelerinin görünürlüğü */
+function vis(list, k, lt) {
+  if (list.includes(k)) return list.includes(k - 1) ? 1 : smooth(lt / 1.2);
+  if (list.includes(k - 1)) return 1 - smooth(lt / 0.8);
+  return 0;
+}
+function placeGroup(g, k) { const an = anchors[k]; g.position.set(an.x, an.y, an.z); g.scale.setScalar(an.s); }
+
+function coreLocal(k, lt) {
+  if (k === 2) return [0, 0, 0, easeOut((lt - 0.4) / 1.6)];
+  if (k === 3) return [0, 0, -7, 1.35];
+  return [0, 0, 0, 0];
+}
+function coreWorld(k, lt) {
+  const [x, y, z, s] = coreLocal(k, lt), an = anchors[k];
+  return [an.x + x * an.s, an.y + y * an.s, an.z + z * an.s, s * an.s];
+}
+
+/* ───────── Kamera ───────── */
+function updateCamera(k, lt, T) {
+  const from = CAM[Math.max(0, k - 1)], to = CAM[k];
+  const w = k === 0 ? 1 : easeInOut(lt / 2.6);
+  const drift = REDUCED ? 0 : 1;
+  camera.position.set(
+    mix(from[0], to[0], w) + Math.sin(T * 0.11) * 0.35 * drift,
+    mix(from[1], to[1], w) + Math.sin(T * 0.07) * 0.2 * drift,
+    mix(from[2], to[2], w)
+  );
+  camera.lookAt(0, 0, 0);
+}
+
+/* ───────── Ana güncelleme ───────── */
+function update(t) {
+  const k = sceneAt(t), S = SCENES[k], lt = t - S.start;
+  const blending = k > 0 && !S.noBlend && lt < TR_TIME;
+  const pk = k - 1, pT = blending ? SCENES[pk].start + SCENES[pk].dur : 0;
+  STAT.remaining = 1000; STAT.dimmed = 0; STAT.lost = 0;
+
+  for (let i = 0; i < N; i++) {
+    layout(k, i, lt, t, A); toWorld(A, k);
+    if (blending) {
+      layout(pk, i, SCENES[pk].dur, pT, B); toWorld(B, pk);
+      const w = easeInOut((lt - R[i * 6] * 0.7) / (TR_TIME - 0.7));
+      A.x = mix(B.x, A.x, w); A.y = mix(B.y, A.y, w); A.z = mix(B.z, A.z, w);
+      A.r = mix(B.r, A.r, w); A.g = mix(B.g, A.g, w); A.b = mix(B.b, A.b, w);
+      A.s = mix(B.s, A.s, w); A.a = mix(B.a, A.a, w);
+      A.y += Math.sin(w * Math.PI) * (R[i * 6 + 1] - .5) * 1.2;
+    }
+    const j = i * 3;
+    P.pos[j] = A.x; P.pos[j + 1] = A.y; P.pos[j + 2] = A.z;
+    P.col[j] = A.r; P.col[j + 1] = A.g; P.col[j + 2] = A.b;
+    P.size[i] = A.s; P.alpha[i] = A.a;
+  }
+  P.geo.attributes.position.needsUpdate = true;
+  P.geo.attributes.aColor.needsUpdate = true;
+  P.geo.attributes.aSize.needsUpdate = true;
+  P.geo.attributes.aAlpha.needsUpdate = true;
+
+  // Çekirdek
+  let [cx, cy, cz, cs] = coreWorld(k, lt);
+  if (blending) {
+    const [px, py, pz, ps] = coreWorld(pk, SCENES[pk].dur), w = easeInOut(lt / TR_TIME);
+    cx = mix(px, cx, w); cy = mix(py, cy, w); cz = mix(pz, cz, w); cs = mix(ps, cs, w);
+  }
+  coreGroup.visible = cs > 0.001;
+  coreGroup.position.set(cx, cy, cz);
+  coreGroup.scale.setScalar(Math.max(cs, 0.0001) * (1 + 0.035 * Math.sin(t * 3)));
+  coreWire.rotation.set(t * 0.21, t * 0.33, 0);
+  coreMat.uniforms.uT.value = t;
+
+  // Akış
+  placeGroup(flowGroup, 1);
+  const fw = vis([1, 2], k, lt);
+  flowGroup.visible = fw > 0.001;
+  const dimSites = k === 2 ? 1 - 0.82 * clamp01(captureF(lt)) : 1;
+  srcMat.opacity = fw * 0.9;
+  srcRing.rotation.set(t * 0.4, t * 0.6, 0);
+  siteMats.forEach((m, n) => {
+    const pulse = 0.75 + 0.25 * Math.sin(t * 3 + n);
+    m.opacity = fw * dimSites * 0.85 * pulse;
+    siteEdgeMats[n].opacity = fw * (0.25 + 0.6 * dimSites);
+    siteMeshes[n * 2].rotation.set(t * 0.3 + n, t * 0.4, 0);
+    siteMeshes[n * 2 + 1].rotation.copy(siteMeshes[n * 2].rotation);
+  });
+
+  // Hayalet ızgara
+  placeGroup(ghostGroup, 3);
+  const gw = vis([3], k, lt) * (k === 3 ? smooth((lt - 4.2) / 1.5) : 1);
+  ghostGroup.visible = gw > 0.001;
+  ghost.mesh.material.uniforms.uMul.value = gw * 0.55;
+
+  // Küre
+  placeGroup(globeGroup, 4);
+  globeGroup.rotation.set(0.35, t * 0.12, 0);
+  const glw = vis([4], k, lt);
+  globeGroup.visible = glw > 0.001; globeMat.opacity = glw * 0.28;
+
+  // Türkiye
+  placeGroup(turkeyGroup, 5);
+  turkeyGroup.rotation.set(-0.5, 0, 0);
+  const tw = vis([5], k, lt);
+  turkeyGroup.visible = tw > 0.001; turkeyMat.opacity = tw * 0.55;
+
+  // Grafik
+  placeGroup(chartGroup, 6);
+  const cw = vis([6], k, lt) * (k === 6 ? smooth((lt - 0.3) / 1.2) : 1);
+  chartGroup.visible = cw > 0.001; chartBaseMat.opacity = cw * 0.5; chartDashMat.opacity = cw * 0.35;
+
+  // Yayıncı
+  placeGroup(pubGroup, 7);
+  const pw = vis([7], k, lt);
+  pubGroup.visible = pw > 0.001;
+  pubMat.opacity = pw * 0.9; pubSolidMat.opacity = pw * (0.6 + 0.3 * Math.sin(t * 2.4));
+  pubWire.rotation.set(t * 0.3, t * 0.45, 0); pubSolid.rotation.copy(pubWire.rotation);
+
+  dustGroup.rotation.y = t * 0.008;
+  dustGroup.position.x = Math.sin(t * 0.05) * 1.5;
+
+  updateCamera(k, lt, t);
+  updateLabels(k, lt, t);
+  updateText(k, lt);
+  updateCounters(k, lt);
+  updateHud(k, t);
+}
+
+/* ───────── Etiketler ───────── */
+const labelsEl = document.getElementById('labels');
+const LBL = [];
+const tmpV = new THREE.Vector3();
+function addLabel(text, cls, off, worldFn, weightFn) {
+  const el = document.createElement('div');
+  el.className = 'lbl ' + cls; el.textContent = text;
+  labelsEl.appendChild(el);
+  LBL.push({ el, off, worldFn, weightFn, v: -1 });
+}
+const OFF = { aboveRight: 'translate(10px, -100%)', belowRight: 'translate(10px, 6px)', below: 'translate(-50%, 18px)', above: 'translate(-50%, calc(-100% - 14px))', right: 'translate(18px, -50%)', left: 'translate(calc(-100% - 18px), -50%)' };
+addLabel('ARAMA', 'strong', OFF.below, v => flowGroup.localToWorld(v.set(SRC[0], SRC[1] - 0.7, 0)), (k, lt) => vis([1, 2], k, lt));
+SITES.forEach((p, n) => addLabel(SITE_NAMES[n].toLocaleUpperCase('tr-TR'), 'hide-narrow', OFF.right,
+  v => flowGroup.localToWorld(v.set(p[0] + 0.4, p[1], 0)),
+  (k, lt) => vis([1, 2], k, lt) * (k === 2 ? 1 - 0.7 * clamp01(captureF(lt)) : 1) * (k === 1 ? smooth((lt - 1) / 1) : 1)));
+addLabel('YAPAY ZEKÂ YANITI', 'ice strong', OFF.below, v => v.set(coreGroup.position.x, coreGroup.position.y - 1.55 * coreGroup.scale.x, coreGroup.position.z),
+  (k, lt) => k === 2 ? smooth((lt - 1.5) / 1) : 0);
+addLabel('AI ÖNCESİ = 100', '', 'translate(0, calc(-100% - 12px))', v => chartGroup.localToWorld(v.set(chartX(0.02), 2.05, 0)), (k, lt) => k === 6 ? smooth((lt - 1.2) / 0.8) : 0);
+addLabel('BUGÜN', 'strong', OFF.above, v => chartGroup.localToWorld(v.set(chartX(TODAY_U), 2.6, 0)), (k, lt) => k === 6 ? smooth((lt - 4.0) / 0.8) : 0);
+addLabel('DÜNYA −%50', 'big', OFF.aboveRight, v => chartGroup.localToWorld(v.set(chartX(TODAY_U) + 0.12, chartY(50) + 0.25, 0)), (k, lt) => k === 6 ? smooth((lt - 4.4) / 0.8) : 0);
+addLabel('TÜRKİYE −%80', 'big red', OFF.belowRight, v => chartGroup.localToWorld(v.set(chartX(TODAY_U) + 0.12, chartY(20) - 0.2, 0)), (k, lt) => k === 6 ? smooth((lt - 4.8) / 0.8) : 0);
+addLabel('?', 'big amber', OFF.right, v => chartGroup.localToWorld(v.set(chartX(1) + 0.1, chartY(20), 0)), (k, lt) => k === 6 ? smooth((lt - 6.0) / 0.8) * (0.7 + 0.3 * Math.sin(lt * 4)) : 0);
+addLabel('HABER SİTESİ', 'strong', OFF.below, v => pubGroup.localToWorld(v.set(0, -0.95, 0)), (k, lt) => k === 7 ? smooth((lt - 1.0) / 1) : 0);
+
+function updateLabels(k, lt) {
+  camera.updateMatrixWorld();
+  [flowGroup, chartGroup, pubGroup].forEach(g => g.updateMatrixWorld());
+  for (const l of LBL) {
+    const w = l.weightFn(k, lt);
+    if (w <= 0.002) { if (l.v !== 0) { l.el.style.opacity = 0; l.v = 0; } continue; }
+    l.worldFn(tmpV).project(camera);
+    if (tmpV.z > 1) { l.el.style.opacity = 0; l.v = 0; continue; }
+    const x = (tmpV.x * .5 + .5) * W, y = (-tmpV.y * .5 + .5) * H;
+    l.el.style.opacity = w.toFixed(3); l.v = w;
+    l.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) ${l.off}`;
+  }
+}
+
+/* ───────── Metin ───────── */
+const sceneEls = [...document.querySelectorAll('.scene')];
+const cues = sceneEls.map(sec => [...sec.querySelectorAll('.cue')].map(el => ({
+  el, tin: +el.dataset.in || 0, tout: el.dataset.out != null ? +el.dataset.out : null, v: -1,
+})));
+function updateText(k, lt) {
+  sceneEls.forEach((sec, j) => { const on = j === k; if (sec._on !== on) { sec._on = on; sec.classList.toggle('on', on); } });
+  const last = k === SCENES.length - 1;
+  cues.forEach((list, j) => list.forEach(c => {
+    let o = 0, p = 1;
+    if (j === k) {
+      p = clamp01((lt - c.tin) / 0.9);
+      o = easeOut(p);
+      const end = c.tout != null ? c.tout : (last ? Infinity : SCENES[k].dur - 0.35);
+      o *= clamp01((end - lt) / 0.55);
+    }
+    if (Math.abs(o - c.v) < 0.003 && !(o === 0 && c.v !== 0) && !(o === 1 && c.v !== 1)) return;
+    c.v = o;
+    const s = c.el.style;
+    s.opacity = o.toFixed(3);
+    s.visibility = o > 0.002 ? 'visible' : 'hidden';
+    const d = 1 - easeOut(p);
+    s.transform = d > 0.002 ? `translateY(${(d * 22).toFixed(1)}px)` : '';
+    s.filter = d > 0.01 ? `blur(${(d * 6).toFixed(1)}px)` : '';
+  }));
+}
+
+const cntBin = document.getElementById('cntBin');
+const cntGlobal = document.getElementById('cntGlobal');
+const cntTR = document.getElementById('cntTR');
+function setText(el, s) { if (el._t !== s) { el._t = s; el.textContent = s; } }
+function pct(n) { return n === 0 ? '%0' : '−%' + n; }
+function updateCounters(k) {
+  if (k === 3) setText(cntBin, fmt(STAT.remaining));
+  if (k === 4) setText(cntGlobal, pct(Math.round(STAT.dimmed / 10)));
+  if (k === 5) setText(cntTR, pct(Math.round(STAT.lost / 10)));
+}
+
+/* ───────── HUD ve kontroller ───────── */
+const chNum = document.getElementById('chNum'), chName = document.getElementById('chName');
+const bar = document.getElementById('bar'), timeEl = document.getElementById('time');
+const segFills = SCENES.map(s => {
+  const seg = document.createElement('div');
+  seg.className = 'seg'; seg.style.flex = s.dur + ' 1 0'; seg.title = s.name;
+  const f = document.createElement('i'); seg.appendChild(f); bar.appendChild(seg);
+  return f;
+});
+bar.setAttribute('aria-valuemax', String(TOTAL));
+const mmss = x => { x = Math.max(0, Math.floor(x)); return String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0'); };
+let hudK = -1, hudSec = -1;
+function updateHud(k, t) {
+  if (k !== hudK) {
+    hudK = k;
+    chNum.textContent = String(k + 1).padStart(2, '0');
+    chName.textContent = SCENES[k].name;
+  }
+  SCENES.forEach((s, j) => { const w = (clamp01((t - s.start) / s.dur) * 100).toFixed(2) + '%'; if (segFills[j]._w !== w) { segFills[j]._w = w; segFills[j].style.width = w; } });
+  const sec = Math.floor(t);
+  if (sec !== hudSec) { hudSec = sec; timeEl.textContent = mmss(t) + ' / ' + mmss(TOTAL); bar.setAttribute('aria-valuenow', String(sec)); }
+}
+
+/* ───────── Ses (Web Audio, sentez) ───────── */
+const Snd = {
+  ctx: null, master: null, drone: null, filt: null, on: true,
+  ensure() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const ctx = this.ctx = new AC();
+    this.master = ctx.createGain(); this.master.gain.value = this.on ? 0.9 : 0; this.master.connect(ctx.destination);
+    this.filt = ctx.createBiquadFilter(); this.filt.type = 'lowpass'; this.filt.frequency.value = 180; this.filt.Q.value = 0.8;
+    this.drone = ctx.createGain(); this.drone.gain.value = 0;
+    [55, 55.45, 82.4].forEach((f, n) => {
+      const o = ctx.createOscillator(); o.type = n === 2 ? 'sine' : 'sawtooth'; o.frequency.value = f;
+      const g = ctx.createGain(); g.gain.value = n === 2 ? 0.25 : 0.5; o.connect(g); g.connect(this.filt); o.start();
+    });
+    this.filt.connect(this.drone); this.drone.connect(this.master);
+    this.noise = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+    const d = this.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  },
+  setOn(v) { this.on = v; if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 : 0, this.ctx.currentTime, 0.08); },
+  setPlaying(p) { if (!this.ctx) return; this.drone.gain.setTargetAtTime(p ? 0.06 : 0, this.ctx.currentTime, p ? 0.8 : 0.2); },
+  tension(x) { if (this.filt) this.filt.frequency.setTargetAtTime(160 + x * 520, this.ctx.currentTime, 1.2); },
+  boom(big) {
+    if (!this.ctx || !this.on) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(big ? 110 : 80, t); o.frequency.exponentialRampToValueAtTime(32, t + 0.9);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(big ? 0.75 : 0.45, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + (big ? 2.2 : 1.5));
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 2.4);
+    const n = ctx.createBufferSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain();
+    n.buffer = this.noise; nf.type = 'lowpass'; nf.frequency.setValueAtTime(big ? 2400 : 1200, t); nf.frequency.exponentialRampToValueAtTime(120, t + 1.2);
+    ng.gain.setValueAtTime(big ? 0.22 : 0.12, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    n.connect(nf); nf.connect(ng); ng.connect(this.master); n.start(t); n.stop(t + 1.4);
+  },
+  swell() {
+    if (!this.ctx || !this.on) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    n.buffer = this.noise; n.loop = true; f.type = 'bandpass'; f.Q.value = 3;
+    f.frequency.setValueAtTime(200, t); f.frequency.exponentialRampToValueAtTime(1800, t + 2.5);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 2.2); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
+    n.connect(f); f.connect(g); g.connect(this.master); n.start(t); n.stop(t + 3.3);
+  },
+};
+const CUES = [];
+SCENES.forEach((s, k) => { if (k > 0) CUES.push({ t: s.start, fn: () => k === 2 ? Snd.swell() : Snd.boom(false) }); });
+CUES.push({ t: SCENES[3].start + 8.3, fn: () => Snd.boom(true) });
+CUES.push({ t: SCENES[4].start + 2.8, fn: () => Snd.boom(true) });
+CUES.push({ t: SCENES[5].start + 2.8, fn: () => Snd.boom(true) });
+const TENSION = [0.1, 0.1, 0.45, 0.6, 0.55, 0.85, 0.7, 0.3, 0.15];
+
+/* ───────── Oynatıcı ───────── */
+let t = 3.6, playing = false, started = false, lastNow = performance.now();
+const btnPlay = document.getElementById('btnPlay'), icoPlay = document.getElementById('icoPlay');
+const btnSnd = document.getElementById('btnSnd'), icoSnd = document.getElementById('icoSnd');
+const PATH_PLAY = 'M7 4.5v15l13-7.5z', PATH_PAUSE = 'M6 4h4v16H6zm8 0h4v16h-4z';
+const PATH_SND = icoSnd.getAttribute('d');
+const PATH_MUTE = 'M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.3-1.3-2.7 2.7-2.7-2.7-1.3 1.3 2.7 2.7-2.7 2.7 1.3 1.3 2.7-2.7 2.7 2.7 1.3-1.3z';
+
+function setPlaying(p) {
+  playing = p;
+  icoPlay.setAttribute('d', p ? PATH_PAUSE : PATH_PLAY);
+  btnPlay.setAttribute('aria-label', p ? 'Duraklat' : 'Oynat');
+  Snd.setPlaying(p);
+  poke();
+}
+function begin(from) {
+  if (!started) { started = true; document.getElementById('start').hidden = true; }
+  Snd.ensure();
+  t = from; if (t >= TOTAL - 0.05) t = 0;
+  setPlaying(true);
+}
+function togglePlay() {
+  if (!started) { begin(startAt); return; }
+  if (!playing && t >= TOTAL - 0.05) t = 0;
+  Snd.ensure(); setPlaying(!playing);
+}
+function seek(nt) { t = Math.max(0, Math.min(TOTAL, nt)); if (!started) { started = true; document.getElementById('start').hidden = true; } poke(); }
+function jump(dir) {
+  const k = sceneAt(t), lt = t - SCENES[k].start;
+  if (dir < 0 && lt > 1.5) seek(SCENES[k].start);
+  else seek(SCENES[Math.max(0, Math.min(SCENES.length - 1, k + dir))].start);
+}
+function fullscreen() {
+  const d = document;
+  if (d.fullscreenElement) d.exitFullscreen && d.exitFullscreen().catch(() => {});
+  else d.documentElement.requestFullscreen && d.documentElement.requestFullscreen().catch(() => {});
+}
+function toggleSound() {
+  Snd.setOn(!Snd.on);
+  icoSnd.setAttribute('d', Snd.on ? PATH_SND : PATH_MUTE);
+  btnSnd.setAttribute('aria-label', Snd.on ? 'Sesi kapat' : 'Sesi aç');
+}
+
+// Bağlantıdaki sahne (#turkiye gibi)
+let startAt = 0;
+{
+  const id = (location.hash || '').slice(1);
+  const k = SCENES.findIndex(s => s.id === id);
+  if (k >= 0) { startAt = SCENES[k].start; t = SCENES[k].start + Math.min(SCENES[k].dur - 1, 4.5); }
+}
+
+document.getElementById('btnStart').addEventListener('click', e => { e.stopPropagation(); begin(startAt); });
+document.getElementById('btnReplay').addEventListener('click', e => { e.stopPropagation(); begin(0); });
+btnPlay.addEventListener('click', togglePlay);
+btnSnd.addEventListener('click', () => { Snd.ensure(); toggleSound(); });
+document.getElementById('btnFs').addEventListener('click', fullscreen);
+canvas.addEventListener('click', togglePlay);
+function barSeek(e) { const r = bar.getBoundingClientRect(); seek(clamp01((e.clientX - r.left) / r.width) * TOTAL); }
+let dragging = false;
+bar.addEventListener('pointerdown', e => { dragging = true; bar.setPointerCapture(e.pointerId); barSeek(e); });
+bar.addEventListener('pointermove', e => { if (dragging) barSeek(e); });
+bar.addEventListener('pointerup', () => { dragging = false; });
+bar.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') { seek(t + 5); e.preventDefault(); e.stopPropagation(); }
+  if (e.key === 'ArrowLeft') { seek(t - 5); e.preventDefault(); e.stopPropagation(); }
+});
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const key = e.key;
+  if (key === ' ' || key === 'k' || key === 'K') { if (e.target.tagName === 'BUTTON') return; togglePlay(); e.preventDefault(); }
+  else if (key === 'ArrowRight' || key === 'PageDown') { jump(1); e.preventDefault(); }
+  else if (key === 'ArrowLeft' || key === 'PageUp') { jump(-1); e.preventDefault(); }
+  else if (key === 'f' || key === 'F') fullscreen();
+  else if (key === 'm' || key === 'M') { Snd.ensure(); toggleSound(); }
+  else if (key === 'Home') seek(0);
+  else if (/^[1-9]$/.test(key)) seek(SCENES[+key - 1].start);
+  poke();
+});
+
+// Hareketsizlikte kontrolleri gizle
+let idleTimer = 0;
+function poke() {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (playing) document.body.classList.add('idle'); }, 2600);
+}
+window.addEventListener('pointermove', poke);
+
+let lastK = -1;
+function audioCues(prev, now) {
+  for (const c of CUES) if (c.t > prev && c.t <= now) c.fn();
+  const k = sceneAt(now);
+  if (k !== lastK) { lastK = k; Snd.tension(TENSION[k]); }
+}
+
+function render() { if (composer) composer.render(); else renderer.render(scene, camera); }
+
+resize();
+window.addEventListener('resize', resize);
+
+if (CAPTURE) {
+  window.__demo = { total: TOTAL, scenes: SCENES.map(s => ({ id: s.id, start: s.start, dur: s.dur })), renderAt(x) { update(x); render(); } };
+  update(0); render();
+} else {
+  const frame = now => {
+    const dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+    if (playing) {
+      const prev = t; t += dt;
+      if (t >= TOTAL) { t = TOTAL; setPlaying(false); }
+      audioCues(prev, t);
+    }
+    update(t); render();
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+})();
+</script>
+</body>
+</html>
